@@ -3,8 +3,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use rasteroid::term_misc::EnvIdentifiers;
-use rasteroid::{inline_an_image, InlineEncoder};
+use image::{DynamicImage, ImageReader};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
@@ -14,9 +13,10 @@ use ratatui::{
     Terminal,
 };
 use std::error::Error;
-use std::fs::File;
+use std::fs;
 use std::io::{self, Read};
-use viuer::{print_from_file, Config};
+use std::path::Path;
+use viuer::{print, Config};
 
 fn main() -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
@@ -41,8 +41,30 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
+/*
+fn load_frames<P: AsRef<Path>>(dir: P) -> Result<Vec<DynamicImage>, Box<dyn Error>> {
+    // Read all files in the directory
+    let paths = fs::read_dir(dir);
+    let mut frames: Vec<DynamicImage> = Vec::new();
+    for entry in fs::read_dir(&dir)? {
+        let path = entry.path();
+        let img = ImageReader::open(path).unwrap().decode().unwrap();
+        frames.push(img);
+    }
+    Ok(frames);
+}
+*/
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    // Pet animation frames
+    let mut frames: Vec<DynamicImage> = Vec::new();
+    for entry in fs::read_dir("assets/")? {
+        let path = entry?.path();
+        let img = ImageReader::open(path).unwrap().decode().unwrap();
+        frames.push(img);
+    }
+
+    let mut frame_index = 0;
+
     loop {
         terminal.draw(|f| {
             let size = f.size();
@@ -52,9 +74,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
                 .constraints([Constraint::Percentage(80), Constraint::Length(3)])
                 .split(size);
 
-            let image_block = Block::default()
-                .title(" Pixel Art Preview ")
-                .borders(Borders::ALL);
+            let image_block = Block::default().title("Bloopy").borders(Borders::ALL);
             f.render_widget(image_block, chunks[0]);
 
             let instructions = Paragraph::new(Spans::from(vec![
@@ -79,8 +99,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
 
             // Display `img.jpg` with dimensions 80×25 in terminal cells.
             // The image resolution will be 80×50 because each cell contains two pixels.
-            print_from_file("pixel-art.png", &conf).expect("Image printing failed.");
+            print(&frames[frame_index], &conf).expect("Image printing failed.");
         })?;
+
+        // Cycle frames
+        frame_index = (frame_index + 1) % frames.len();
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
